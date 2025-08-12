@@ -1,4 +1,4 @@
-# README — Enterprise RAG Chatbot
+# Enterprise RAG Chatbot
 
 **Status:** In development / internal testing  
 **Owner:** Applied AI  
