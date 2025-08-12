@@ -1,7 +1,6 @@
 # Enterprise RAG Chatbot
 
 **Status:** In development / internal testing  
-**Owner:** Applied AI  
 **Tech:** Python, retrieval middleware, embeddings, vector store (pluggable: FAISS/pgvector/Qdrant/Chroma), HTTP API, logging/telemetry, CI
 
 ## 1) What this is
