@@ -40,11 +40,11 @@ The **Enterprise RAG Chatbot** is a **self-hosted, Dockerized** RAG system for a
 graph TD
     A[User Query] --> B[Intent & Preprocess]
     B --> C[Retriever: Vector DB + Filters]
-    C --> D[Reranker (optional)]
-    D --> E[LLM Synthesis (Local or OpenRouter)]
-    E --> F[Guardrails (must-cite, PII, policy)]
+    C --> D["Reranker (optional)"]
+    D --> E[LLM Synthesis: Local or OpenRouter]
+    E --> F[Guardrails: must-cite, PII, policy]
     F --> G[Answer + Citations]
-    G --> H[Tracing & Evals (Langfuse/Phoenix + Ragas)]
+    G --> H[Tracing & Evals: Langfuse/Phoenix + Ragas]
 ```
 
 ---
