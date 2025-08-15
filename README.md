@@ -51,15 +51,15 @@ This end-to-end **perceive → plan → act → critique → adapt** loop is wha
 ## 🏗 Agentic Architecture
 
 ```mermaid
-graph TD
-    A[User Query] --> B[Perceive: Intent & Preprocess]
-    B --> C[Plan: Retrieval Params + Memory Filters]
-    C --> D[Act: Retrieve from Vector DB + Optional Reranker]
-    D --> E[Synthesize: Local or API LLM]
-    E --> F[Critique: Guardrails (must-cite, PII, policy)]
-    F -->|Fail| C
-    F -->|Pass| G[Final Answer + Citations]
-    G --> H[Learn: Trace + Eval (Langfuse/Phoenix + Ragas)]
+    graph TD
+        A[User Query] --> B[Perceive: Intent & Preprocess]
+        B --> C[Plan: Retrieval Params + Memory Filters]
+        C --> D[Act: Retrieve from Vector DB + Optional Reranker]
+        D --> E[Synthesize: Local or API LLM]
+        E --> F[Critique: Guardrails (must-cite, PII, policy)]
+        F -->|Fail| C
+        F -->|Pass| G[Final Answer + Citations]
+        G --> H[Learn: Trace + Eval (Langfuse/Phoenix + Ragas)]
 ```
 
 **Agent moments:**
