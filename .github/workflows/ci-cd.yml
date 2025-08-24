@@ -1,0 +1,435 @@
+name: Enterprise RAG Chatbot CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  PYTHON_VERSION: '3.11'
+  POETRY_VERSION: '1.6.1'
+
+jobs:
+  # Code Quality and Linting
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        pip install black isort flake8 mypy bandit safety
+        pip install -r requirements.txt
+    
+    - name: Run Black (Code Formatting)
+      run: black --check --diff src/ tests/
+    
+    - name: Run isort (Import Sorting)
+      run: isort --check-only --diff src/ tests/
+    
+    - name: Run Flake8 (Linting)
+      run: flake8 src/ tests/ --max-line-length=88 --extend-ignore=E203,W503
+    
+    - name: Run MyPy (Type Checking)
+      run: mypy src/ --ignore-missing-imports
+    
+    - name: Run Bandit (Security Analysis)
+      run: bandit -r src/ -f json -o bandit-report.json || true
+    
+    - name: Run Safety (Dependency Security)
+      run: safety check --json --output safety-report.json || true
+    
+    - name: Upload Security Reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+
+  # Unit Tests
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: quality
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio pytest-cov pytest-mock pytest-xdist
+    
+    - name: Run Unit Tests
+      run: |
+        pytest tests/unit/ \
+          --cov=src \
+          --cov-report=term-missing \
+          --cov-report=xml \
+          --cov-report=html \
+          --junit-xml=junit/unit-test-results.xml \
+          --cov-fail-under=85 \
+          -v
+    
+    - name: Upload Unit Test Results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: unit-test-results-${{ matrix.python-version }}
+        path: |
+          junit/unit-test-results.xml
+          htmlcov/
+          coverage.xml
+    
+    - name: Comment Coverage Report
+      if: github.event_name == 'pull_request'
+      uses: orgoro/coverage@v3.1
+      with:
+        coverageFile: coverage.xml
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Integration Tests
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio httpx
+    
+    - name: Start ChromaDB for testing
+      run: |
+        pip install chromadb
+        # ChromaDB runs in-process for testing
+    
+    - name: Run Integration Tests
+      env:
+        REDIS_URL: redis://localhost:6379
+        ENVIRONMENT: test
+        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      run: |
+        pytest tests/integration/ \
+          --junit-xml=junit/integration-test-results.xml \
+          -v \
+          --tb=short
+    
+    - name: Upload Integration Test Results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: integration-test-results
+        path: junit/integration-test-results.xml
+
+  # RAG Evaluation Tests
+  evaluation-tests:
+    name: RAG Evaluation with Ragas
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-evaluation')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install ragas datasets langchain
+    
+    - name: Run RAG Evaluation Tests
+      env:
+        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        ENVIRONMENT: test
+      run: |
+        pytest tests/evaluation/ \
+          --junit-xml=junit/evaluation-test-results.xml \
+          -v \
+          --tb=short \
+          -m evaluation
+    
+    - name: Upload Evaluation Results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: evaluation-test-results
+        path: |
+          junit/evaluation-test-results.xml
+          evaluation-reports/
+
+  # Performance Tests
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    if: github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'run-performance')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install locust memory-profiler psutil
+    
+    - name: Run Performance Tests
+      env:
+        ENVIRONMENT: test
+      run: |
+        pytest tests/performance/ \
+          --junit-xml=junit/performance-test-results.xml \
+          -v \
+          --tb=short \
+          -m performance \
+          --durations=0
+    
+    - name: Upload Performance Results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: performance-test-results
+        path: |
+          junit/performance-test-results.xml
+          performance-reports/
+
+  # Security Scan
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: quality
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  # Build and Test Docker Image
+  docker-build:
+    name: Docker Build & Test
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./deploy/Dockerfile
+        push: false
+        tags: enterprise-rag-chatbot:test
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Test Docker image
+      run: |
+        docker run --rm \
+          --name rag-test \
+          -e ENVIRONMENT=test \
+          enterprise-rag-chatbot:test \
+          python -c "
+        import sys
+        sys.path.append('/app')
+        from src.app.main import app
+        print('Docker image test passed')
+        "
+
+  # Load Testing (on schedule only)
+  load-testing:
+    name: Load Testing
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.event_name == 'schedule'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install Locust
+      run: pip install locust
+    
+    - name: Create Locust test file
+      run: |
+        cat > locustfile.py << 'EOF'
+        from locust import HttpUser, task, between
+        
+        class RAGChatbotUser(HttpUser):
+            wait_time = between(1, 3)
+            
+            @task
+            def health_check(self):
+                self.client.get("/health")
+            
+            @task(3)
+            def chat_query(self):
+                self.client.post("/api/v1/chat", json={
+                    "message": "What is machine learning?",
+                    "conversation_id": "test-load"
+                })
+        EOF
+    
+    - name: Run Locust load test
+      run: |
+        locust -f locustfile.py --headless \
+          --users 10 --spawn-rate 2 \
+          --run-time 60s \
+          --host http://localhost:8000 \
+          --html load-test-report.html
+      continue-on-error: true
+    
+    - name: Upload Load Test Report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: load-test-report
+        path: load-test-report.html
+
+  # Deploy to Staging (on main branch)
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, security-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: staging
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to staging
+      run: |
+        echo "Deploying to staging environment..."
+        # Add your staging deployment commands here
+        # For example: kubectl apply, docker deploy, etc.
+        echo "Staging deployment completed"
+
+  # Deploy to Production (manual approval required)
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, evaluation-tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to production
+      run: |
+        echo "Deploying to production environment..."
+        # Add your production deployment commands here
+        echo "Production deployment completed"
+    
+    - name: Post-deployment health check
+      run: |
+        echo "Running post-deployment health checks..."
+        # Add health check commands here
+        echo "Health checks passed"
+
+  # Notification
+  notify:
+    name: Notification
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always() && (github.ref == 'refs/heads/main' || github.event_name == 'pull_request')
+    
+    steps:
+    - name: Notify on success
+      if: needs.deploy-production.result == 'success'
+      run: |
+        echo "🎉 Deployment successful!"
+        # Add notification logic (Slack, email, etc.)
+    
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "❌ Pipeline failed!"
+        # Add failure notification logic
+
+  # Cleanup
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    needs: [notify]
+    if: always()
+    
+    steps:
+    - name: Cleanup artifacts
+      run: |
+        echo "Cleaning up temporary resources..."
+        # Add cleanup commands here
+        echo "Cleanup completed"
