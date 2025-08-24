@@ -237,3 +237,5 @@ Icon?
 Network Trash Folder
 Temporary Items
 .apdisk
+
+tests\test_security_integration.py
