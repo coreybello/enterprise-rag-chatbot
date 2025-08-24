@@ -15,7 +15,7 @@
 ### 🧠 Agentic Intelligence Features
 
 ✅ **Intelligent Automation**
-- **Claude-Flow orchestration** for multi-agent coordination and task automation
+- **Guardrails orchestration** for enterprise compliance and security enforcement
 - **Adaptive memory management** with Zep integration for context-aware conversations
 - **Smart document processing** with automatic categorization and metadata extraction
 - **Dynamic prompt engineering** with context-aware response generation
@@ -139,7 +139,7 @@ agentic-rag/
 │   └── ingestion/            # Document processing pipeline
 ├── deploy/compose/            # Docker Compose deployment
 ├── docs/                      # Comprehensive documentation
-├── coordination/              # Claude-Flow orchestration
+
 ├── config/                    # Configuration management
 ├── tests/                     # Test suites (unit, integration, e2e)
 └── scripts/                   # Utility and setup scripts
@@ -148,7 +148,7 @@ agentic-rag/
 ## 🔧 Key Components
 
 ### Agentic Capabilities
-- **Claude-Flow Integration**: Multi-agent coordination and task orchestration
+- **Guardrails Orchestration**: Enterprise compliance and security enforcement
 - **Memory Management**: Persistent conversation context with Zep
 - **Intelligent Routing**: Smart decision-making for complex queries
 - **Adaptive Learning**: System improvement through usage patterns
@@ -388,7 +388,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Built with ❤️ by the Agentic RAG Team**
 
 **Core Technologies**: FastAPI + Next.js + Weaviate + Langfuse + Zep
-**Orchestration**: Claude-Flow for intelligent automation
+**Orchestration**: Guardrails for enterprise compliance and security
 **Security**: Enterprise-grade guardrails and compliance systems
 
 *For detailed implementation guides, API references, and advanced configuration, explore the [comprehensive documentation](docs/INDEX.md).*
